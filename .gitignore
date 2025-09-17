@@ -4,6 +4,7 @@ build/
 !**/src/main/**/build/
 !**/src/test/**/build/
 config.properties
+hibernate.properties
 
 ### IntelliJ IDEA ###
 .idea/modules.xml

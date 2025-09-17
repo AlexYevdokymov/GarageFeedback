@@ -1,6 +1,10 @@
 package org.example;
 
-import lombok.Data;
+import org.example.entity.FeedbackEntity;
+import org.example.entity.UserEntity;
+import org.example.util.HibernateUtil;
+import org.hibernate.Session;
+import org.hibernate.Transaction;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
@@ -11,13 +15,13 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.Instant;
 import java.util.*;
 
 public class TelegramBot extends TelegramLongPollingBot {
 
     private String botToken;
     private String botUsername;
-    private final Map<Long, User> users = new HashMap<>();
 
     private final Map<Long, Integer> levels = new HashMap<>();
 
@@ -58,7 +62,6 @@ public class TelegramBot extends TelegramLongPollingBot {
     @Override
     public void onUpdateReceived(Update update) {
         Long chatId = getChatId(update);
-        User user = users.computeIfAbsent(chatId, k -> new User());
 
         if (update.hasMessage() && update.getMessage().hasText()
                 && update.getMessage().getText().equals("/start")) {
@@ -69,34 +72,40 @@ public class TelegramBot extends TelegramLongPollingBot {
             String data = update.getCallbackQuery().getData();
 
             if (data.equals(CHANGE_SELECTION) && getLevel(chatId)==3) {
-                user.setPosition(null);
-                user.setRegion(null);
+                resetUserSettings(chatId);
                 askPosition(chatId);
                 return;
             }
 
             if (positions.containsKey(data) && getLevel(chatId)==1) {
-                user.setPosition(positions.get(data));
+                saveUserPosition(chatId, data);
                 askRegion(chatId);
             }
 
 
             if (regions.containsKey(data) && getLevel(chatId)==2) {
-                    user.setRegion(regions.get(data));
-                    sendFinalMessage(chatId, user);
+                saveUserRegion(chatId, data);
+                sendFinalMessage(chatId);
             }
         }
 
         if (update.hasMessage() && update.getMessage().hasText()
                 && getLevel(chatId)==3) {
             String text = update.getMessage().getText();
-            handleUserFeedback(chatId,text,user);
+            saveFeedback(chatId,text);
+
+            SendMessage confirmation = new SendMessage();
+            confirmation.setChatId(chatId.toString());
+            confirmation.setText("Дякуємо за відгук!" +
+                    "\nНайближчим часом ми опрацюємо Ваше звернення \n\"" +
+                    text + '"');
+            executeSafely(confirmation);
+            sendFinalMessage(chatId);
         }
     }
 
     private void askPosition(Long chatId) {
         setLevel(chatId,1);
-        users.putIfAbsent(chatId, new User());
         SendMessage message = new SendMessage();
         message.setChatId(chatId.toString());
         message.setText("Вітаю! Оберіть свою посаду: ");
@@ -113,8 +122,10 @@ public class TelegramBot extends TelegramLongPollingBot {
         executeSafely(message);
     }
 
-    private void sendFinalMessage(Long chatId, User user) {
+    private void sendFinalMessage(Long chatId) {
         setLevel(chatId,3);
+        UserEntity user = getUser(chatId);
+
         SendMessage message = new SendMessage();
         message.setChatId(chatId.toString());
         message.setText("Чудово! Ви " + user.getPosition() +
@@ -131,17 +142,6 @@ public class TelegramBot extends TelegramLongPollingBot {
         message.setReplyMarkup(markup);
 
         executeSafely(message);
-    }
-
-    private void handleUserFeedback(Long chatId, String text, User user) {
-        SendMessage confirmation = new SendMessage();
-        confirmation.setChatId(chatId.toString());
-        confirmation.setText("Дякуємо за відгук!" +
-                "\nНайближчим часом ми опрацюємо Ваше звернення \n\"" +
-                text + '"');
-        executeSafely(confirmation);
-
-        sendFinalMessage(chatId, user);
     }
 
     private void executeSafely(SendMessage message) {
@@ -187,9 +187,82 @@ public class TelegramBot extends TelegramLongPollingBot {
         levels.put(chatId, level);
     }
 
-    @Data
-    public static class User {
-        private String position;
-        private String region;
+    private void saveUserPosition(Long chatId, String key) {
+        Session session = HibernateUtil.getSession();
+        Transaction tx = session.beginTransaction();
+
+        UserEntity user = session.createQuery("FROM UserEntity WHERE chatId = :chatId", UserEntity.class)
+                .setParameter("chatId", chatId)
+                .uniqueResult();
+        if (user == null) {
+            user = new UserEntity();
+            user.setChatId(chatId);
+        }
+        user.setPosition(positions.get(key));
+        user.setRegion(null);
+        session.persist(user);
+
+        tx.commit();
+        session.close();
     }
+    private void saveUserRegion(Long chatId, String key) {
+        Session session = HibernateUtil.getSession();
+        Transaction tx = session.beginTransaction();
+
+        UserEntity user = session.createQuery("FROM UserEntity WHERE chatId = :chatId", UserEntity.class)
+                .setParameter("chatId", chatId)
+                .uniqueResult();
+        if (user != null) {
+            user.setRegion(regions.get(key));
+            session.merge(user);
+        }
+
+        tx.commit();
+        session.close();
+    }
+    private void resetUserSettings(Long chatId) {
+        Session session = HibernateUtil.getSession();
+        Transaction tx = session.beginTransaction();
+
+        UserEntity user = session.createQuery("FROM UserEntity WHERE chatId = :chatId", UserEntity.class)
+                .setParameter("chatId", chatId)
+                .uniqueResult();
+        if (user != null) {
+            session.delete(user);
+        }
+
+        tx.commit();
+        session.close();
+    }
+
+private void saveFeedback(Long chatId, String text) {
+    Session session = HibernateUtil.getSession();
+    Transaction tx = session.beginTransaction();
+
+    UserEntity user = session.createQuery("FROM UserEntity WHERE chatId = :chatId", UserEntity.class)
+            .setParameter("chatId", chatId)
+            .uniqueResult();
+
+    if (user != null) {
+        FeedbackEntity feedback = new FeedbackEntity();
+        feedback.setPosition(user.getPosition());
+        feedback.setRegion(user.getRegion());
+        feedback.setFeedback(text);
+        feedback.setUtc(Instant.now());
+        session.persist(feedback);
+    }
+
+    tx.commit();
+    session.close();
+}
+private UserEntity getUser(Long chatId) {
+    Session session = HibernateUtil.getSession();
+    UserEntity user = session.createQuery(
+                    "FROM UserEntity WHERE chatId = :chatId", UserEntity.class)
+            .setParameter("chatId",chatId)
+            .uniqueResult();
+    session.close();
+    return user;
+}
+
 }
