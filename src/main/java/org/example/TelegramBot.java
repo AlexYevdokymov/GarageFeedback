@@ -58,6 +58,7 @@ public class TelegramBot extends TelegramLongPollingBot {
     @Override
     public void onUpdateReceived(Update update) {
         Long chatId = getChatId(update);
+        User user = users.computeIfAbsent(chatId, k -> new User());
 
         if (update.hasMessage() && update.getMessage().hasText()
                 && update.getMessage().getText().equals("/start")) {
@@ -66,7 +67,6 @@ public class TelegramBot extends TelegramLongPollingBot {
 
         if (update.hasCallbackQuery()) {
             String data = update.getCallbackQuery().getData();
-            User user = users.computeIfAbsent(chatId, k -> new User());
 
             if (data.equals(CHANGE_SELECTION) && getLevel(chatId)==3) {
                 user.setPosition(null);
@@ -84,8 +84,14 @@ public class TelegramBot extends TelegramLongPollingBot {
             if (regions.containsKey(data) && getLevel(chatId)==2) {
                     user.setRegion(regions.get(data));
                     sendFinalMessage(chatId, user);
-                }
             }
+        }
+
+        if (update.hasMessage() && update.getMessage().hasText()
+                && getLevel(chatId)==3) {
+            String text = update.getMessage().getText();
+            handleUserFeedback(chatId,text,user);
+        }
     }
 
     private void askPosition(Long chatId) {
@@ -112,8 +118,8 @@ public class TelegramBot extends TelegramLongPollingBot {
         SendMessage message = new SendMessage();
         message.setChatId(chatId.toString());
         message.setText("Чудово! Ви " + user.getPosition() +
-                " із філії " + user.getRegion() +
-                ".\nНадішліть, будь ласка, Ваш відгук" +
+                " із філії \"" + user.getRegion() +
+                "\".\nНадішліть, будь ласка, Ваш відгук" +
                 "\nу повідомлення, або, за потреби," +
                 "\nможете змінити позицію та регіон.");
 
@@ -125,6 +131,17 @@ public class TelegramBot extends TelegramLongPollingBot {
         message.setReplyMarkup(markup);
 
         executeSafely(message);
+    }
+
+    private void handleUserFeedback(Long chatId, String text, User user) {
+        SendMessage confirmation = new SendMessage();
+        confirmation.setChatId(chatId.toString());
+        confirmation.setText("Дякуємо за відгук!" +
+                "\nНайближчим часом ми опрацюємо Ваше звернення \n\"" +
+                text + '"');
+        executeSafely(confirmation);
+
+        sendFinalMessage(chatId, user);
     }
 
     private void executeSafely(SendMessage message) {
