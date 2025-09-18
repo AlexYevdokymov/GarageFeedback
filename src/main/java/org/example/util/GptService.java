@@ -29,18 +29,26 @@ public class GptService {
     }
 
     public String analyzeReview(String review) {
-        ChatMessage systemMessage = new ChatMessage("system",
-                "У повідомленні буде відгук користувача. Відповідай тільки одним словом: 'позитивний', 'негативний' або 'нейтральний'.");
-        ChatMessage userMessage = new ChatMessage("user", review);
+    ChatMessage systemMessage = new ChatMessage("system",
+            "У повідомленні буде відгук користувача. Відповідай у форматі JSON з трьома полями:\n" +
+                    "1. tone — 'позитивний', 'негативний' або 'нейтральний'\n" +
+                    "2. urgency — число від 1 до 5, де 5 найбільш критично для роботи автосервісу або безпеки, або потрібно в найближчий термін\n" +
+                    "3. suggestion — короткий текст можливого рішення або дії\n\n" +
+                    "Приклад відповіді:\n" +
+                    "{ \"tone\": \"негативний\", \"urgency\": 4, \"suggestion\": \"Звернутися до служби підтримки\" }"
+    );
 
-        ChatCompletionRequest request = ChatCompletionRequest.builder()
-                .model("gpt-4o-mini")
-                .messages(List.of(systemMessage, userMessage))
-                .maxTokens(5)
-                .temperature(0.0)
-                .build();
+    ChatMessage userMessage = new ChatMessage("user", review);
 
-        ChatCompletionResult result = service.createChatCompletion(request);
-        return result.getChoices().get(0).getMessage().getContent().trim().toLowerCase();
+    ChatCompletionRequest request = ChatCompletionRequest.builder()
+            .model("gpt-4o-mini")
+            .messages(List.of(systemMessage, userMessage))
+            .temperature(0.0)
+            .maxTokens(100)
+            .build();
+
+    ChatCompletionResult result = service.createChatCompletion(request);
+    return result.getChoices().get(0).getMessage().getContent().trim();
     }
+
 }

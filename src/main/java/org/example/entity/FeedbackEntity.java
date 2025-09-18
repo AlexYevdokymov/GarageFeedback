@@ -16,5 +16,7 @@ public class FeedbackEntity {
     private String position;
     private String region;
     private String feedback;
+    private String response;
+    private boolean trello = false;
     private Instant utc = Instant.now();
 }

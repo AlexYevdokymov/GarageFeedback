@@ -1,6 +1,8 @@
 package org.example;
 
 
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
 import org.example.entity.FeedbackEntity;
 import org.example.entity.UserEntity;
 import org.example.util.GptService;
@@ -94,18 +96,13 @@ public class TelegramBot extends TelegramLongPollingBot {
 
         if (update.hasMessage() && update.getMessage().hasText()
                 && getLevel(chatId)==3) {
-            GptService gptService = new GptService();
-
             String text = update.getMessage().getText();
             saveFeedback(chatId,text);
-
-            String answer = gptService.analyzeReview(text);
-
             SendMessage confirmation = new SendMessage();
             confirmation.setChatId(chatId.toString());
             confirmation.setText("Дякуємо за відгук!" +
                     "\nНайближчим часом ми опрацюємо Ваше звернення \n\"" +
-                    text + "\" \n" + answer);
+                    text + "\"");
             executeSafely(confirmation);
             sendFinalMessage(chatId);
         }
@@ -242,27 +239,37 @@ public class TelegramBot extends TelegramLongPollingBot {
         session.close();
     }
 
-private void saveFeedback(Long chatId, String text) {
-    Session session = HibernateUtil.getSession();
-    Transaction tx = session.beginTransaction();
+    private void saveFeedback(Long chatId, String text) {
 
-    UserEntity user = session.createQuery("FROM UserEntity WHERE chatId = :chatId", UserEntity.class)
-            .setParameter("chatId", chatId)
-            .uniqueResult();
+        GptService gptService = new GptService();
+        String answer = gptService.analyzeReview(text);
+        Session session = HibernateUtil.getSession();
+        Transaction tx = session.beginTransaction();
 
-    if (user != null) {
-        FeedbackEntity feedback = new FeedbackEntity();
-        feedback.setPosition(user.getPosition());
-        feedback.setRegion(user.getRegion());
-        feedback.setFeedback(text);
-        feedback.setUtc(Instant.now());
-        session.persist(feedback);
+        UserEntity user = session.createQuery("FROM UserEntity WHERE chatId = :chatId", UserEntity.class)
+                .setParameter("chatId", chatId)
+                .uniqueResult();
+
+        if (user != null) {
+            FeedbackEntity feedback = new FeedbackEntity();
+
+            Gson gson = new Gson();
+            JsonObject obj = gson.fromJson(answer, JsonObject.class);
+            int urgency = obj.get("urgency").getAsInt();
+
+            feedback.setPosition(user.getPosition());
+            feedback.setRegion(user.getRegion());
+            feedback.setFeedback(text);
+            feedback.setResponse(answer);
+            if(urgency==4 || urgency==5) feedback.setTrello(true);
+            feedback.setUtc(Instant.now());
+            session.persist(feedback);
+        }
+
+        tx.commit();
+        session.close();
     }
-
-    tx.commit();
-    session.close();
-}
-private UserEntity getUser(Long chatId) {
+    private UserEntity getUser(Long chatId) {
     Session session = HibernateUtil.getSession();
     UserEntity user = session.createQuery(
                     "FROM UserEntity WHERE chatId = :chatId", UserEntity.class)
@@ -270,6 +277,6 @@ private UserEntity getUser(Long chatId) {
             .uniqueResult();
     session.close();
     return user;
-}
+    }
 
 }
