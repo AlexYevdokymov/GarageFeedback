@@ -5,6 +5,8 @@ build/
 !**/src/test/**/build/
 config.properties
 hibernate.properties
+credentials.json
+old_credentials.json
 
 ### IntelliJ IDEA ###
 .idea/modules.xml

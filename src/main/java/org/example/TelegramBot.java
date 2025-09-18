@@ -5,6 +5,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import org.example.entity.FeedbackEntity;
 import org.example.entity.UserEntity;
+import org.example.util.GoogleDocs;
 import org.example.util.GptService;
 import org.example.util.HibernateUtil;
 import org.hibernate.Session;
@@ -19,6 +20,7 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.security.GeneralSecurityException;
 import java.time.Instant;
 import java.util.*;
 
@@ -97,7 +99,15 @@ public class TelegramBot extends TelegramLongPollingBot {
         if (update.hasMessage() && update.getMessage().hasText()
                 && getLevel(chatId)==3) {
             String text = update.getMessage().getText();
-            saveFeedback(chatId,text);
+            try {
+                saveFeedback(chatId,text);
+            } catch (GeneralSecurityException e) {
+                throw new RuntimeException(e);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+
+
             SendMessage confirmation = new SendMessage();
             confirmation.setChatId(chatId.toString());
             confirmation.setText("Дякуємо за відгук!" +
@@ -239,7 +249,7 @@ public class TelegramBot extends TelegramLongPollingBot {
         session.close();
     }
 
-    private void saveFeedback(Long chatId, String text) {
+    private void saveFeedback(Long chatId, String text) throws GeneralSecurityException, IOException {
 
         GptService gptService = new GptService();
         String answer = gptService.analyzeReview(text);
@@ -252,8 +262,10 @@ public class TelegramBot extends TelegramLongPollingBot {
 
         if (user != null) {
             FeedbackEntity feedback = new FeedbackEntity();
-
             Gson gson = new Gson();
+            GoogleDocs googleDocs = new GoogleDocs();
+            String messageForDocs;
+
             JsonObject obj = gson.fromJson(answer, JsonObject.class);
             int urgency = obj.get("urgency").getAsInt();
 
@@ -263,6 +275,11 @@ public class TelegramBot extends TelegramLongPollingBot {
             feedback.setResponse(answer);
             if(urgency==4 || urgency==5) feedback.setTrello(true);
             feedback.setUtc(Instant.now());
+
+            messageForDocs = user.getPosition() + " із філії \"" +
+                    user.getRegion() + "\" залишив відгук: \n" +
+                    text + "\n Можливе вирішення: \n" + obj.get("suggestion");
+            googleDocs.sendMessage(messageForDocs);
             session.persist(feedback);
         }
 
