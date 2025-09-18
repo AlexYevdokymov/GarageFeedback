@@ -276,11 +276,14 @@ public class TelegramBot extends TelegramLongPollingBot {
             if(urgency==4 || urgency==5) feedback.setTrello(true);
             feedback.setUtc(Instant.now());
 
-            messageForDocs = user.getPosition() + " із філії \"" +
-                    user.getRegion() + "\" залишив відгук: \n" +
-                    text + "\n Можливе вирішення: \n" + obj.get("suggestion");
-            googleDocs.sendMessage(messageForDocs);
             session.persist(feedback);
+            Long feedbackId = feedback.getId();
+            messageForDocs = "Звернення №" + feedbackId + ". Критичність " +
+                    obj.get("urgency").getAsInt() + " з 5\n\n" +
+                    user.getPosition() + " із філії \"" +
+                    user.getRegion() + "\" залишив відгук: \n\"" +
+                    text + "\"\n Можливе вирішення: \n" + obj.get("suggestion") + "\n\n\n";
+            googleDocs.sendMessage(messageForDocs);
         }
 
         tx.commit();
