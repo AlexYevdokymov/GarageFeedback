@@ -1,7 +1,9 @@
 package org.example;
 
+
 import org.example.entity.FeedbackEntity;
 import org.example.entity.UserEntity;
+import org.example.util.GptService;
 import org.example.util.HibernateUtil;
 import org.hibernate.Session;
 import org.hibernate.Transaction;
@@ -40,6 +42,7 @@ public class TelegramBot extends TelegramLongPollingBot {
     private static final String CHANGE_SELECTION = "change_selection";
 
     public TelegramBot() {
+        GptService gptService = new GptService();
         Properties props = new Properties();
         try (InputStream in = new FileInputStream("config.properties")) {
             props.load(in);
@@ -91,14 +94,18 @@ public class TelegramBot extends TelegramLongPollingBot {
 
         if (update.hasMessage() && update.getMessage().hasText()
                 && getLevel(chatId)==3) {
+            GptService gptService = new GptService();
+
             String text = update.getMessage().getText();
             saveFeedback(chatId,text);
+
+            String answer = gptService.analyzeReview(text);
 
             SendMessage confirmation = new SendMessage();
             confirmation.setChatId(chatId.toString());
             confirmation.setText("Дякуємо за відгук!" +
                     "\nНайближчим часом ми опрацюємо Ваше звернення \n\"" +
-                    text + '"');
+                    text + "\" \n" + answer);
             executeSafely(confirmation);
             sendFinalMessage(chatId);
         }
