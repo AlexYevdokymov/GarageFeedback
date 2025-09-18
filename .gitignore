@@ -7,6 +7,7 @@ config.properties
 hibernate.properties
 credentials.json
 old_credentials.json
+StoredCredential
 
 ### IntelliJ IDEA ###
 .idea/modules.xml
