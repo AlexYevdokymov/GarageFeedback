@@ -15,16 +15,27 @@ import com.google.auth.oauth2.GoogleCredentials;
 
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.security.GeneralSecurityException;
 import java.util.Collections;
+import java.util.Properties;
 
 public class GoogleDocs {
 
     private static final String APPLICATION_NAME = "Garage Feedbacks";
     private static final JsonFactory JSON_FACTORY = GsonFactory.getDefaultInstance();
-    private static final String DOCUMENT_ID = "1MyyAQ_ADtrd1bkDUxs7LpnzuxtweKDY1AP-h4hrEXkk";
     private static final String SERVICE_ACCOUNT_KEY_PATH = "src/main/resources/credentials.json";
+    private String documentId;
 
+    public GoogleDocs(){
+        Properties props = new Properties();
+        try (InputStream in = new FileInputStream("config.properties")) {
+            props.load(in);
+            documentId = props.getProperty("googledocs.id");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 
     public void sendMessage(String text) throws IOException, GeneralSecurityException {
         final NetHttpTransport HTTP_TRANSPORT = GoogleNetHttpTransport.newTrustedTransport();
@@ -46,6 +57,6 @@ public class GoogleDocs {
         BatchUpdateDocumentRequest body = new BatchUpdateDocumentRequest()
                 .setRequests(Collections.singletonList(insertTextRequest));
 
-        service.documents().batchUpdate(DOCUMENT_ID, body).execute();
+        service.documents().batchUpdate(documentId, body).execute();
     }
 }
