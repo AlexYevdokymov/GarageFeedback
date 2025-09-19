@@ -8,6 +8,7 @@ import org.example.entity.UserEntity;
 import org.example.util.GoogleDocs;
 import org.example.util.GptService;
 import org.example.util.HibernateUtil;
+import org.example.util.TrelloService;
 import org.hibernate.Session;
 import org.hibernate.Transaction;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
@@ -103,7 +104,7 @@ public class TelegramBot extends TelegramLongPollingBot {
                 saveFeedback(chatId,text);
             } catch (GeneralSecurityException e) {
                 throw new RuntimeException(e);
-            } catch (IOException e) {
+            } catch (Exception e) {
                 throw new RuntimeException(e);
             }
 
@@ -249,7 +250,7 @@ public class TelegramBot extends TelegramLongPollingBot {
         session.close();
     }
 
-    private void saveFeedback(Long chatId, String text) throws GeneralSecurityException, IOException {
+    private void saveFeedback(Long chatId, String text) throws Exception {
 
         GptService gptService = new GptService();
         String answer = gptService.analyzeReview(text);
@@ -265,6 +266,8 @@ public class TelegramBot extends TelegramLongPollingBot {
             Gson gson = new Gson();
             GoogleDocs googleDocs = new GoogleDocs();
             String messageForDocs;
+            String titleForTrello;
+            String textForTrello;
 
             JsonObject obj = gson.fromJson(answer, JsonObject.class);
             int urgency = obj.get("urgency").getAsInt();
@@ -273,10 +276,12 @@ public class TelegramBot extends TelegramLongPollingBot {
             feedback.setRegion(user.getRegion());
             feedback.setFeedback(text);
             feedback.setResponse(answer);
-            if(urgency==4 || urgency==5) feedback.setTrello(true);
             feedback.setUtc(Instant.now());
 
+            if(urgency==4 || urgency==5) feedback.setTrello(true);
+
             session.persist(feedback);
+
             Long feedbackId = feedback.getId();
             messageForDocs = "Звернення №" + feedbackId + ". Критичність " +
                     obj.get("urgency").getAsInt() + " з 5\n\n" +
@@ -284,6 +289,15 @@ public class TelegramBot extends TelegramLongPollingBot {
                     user.getRegion() + "\" залишив відгук: \n\"" +
                     text + "\"\n Можливе вирішення: \n" + obj.get("suggestion") + "\n\n\n";
             googleDocs.sendMessage(messageForDocs);
+
+            if(urgency==4 || urgency==5) {
+                titleForTrello = "Звернення №" + feedbackId + '\n' +
+                        obj.get("suggestion");
+                textForTrello = user.getPosition() + " із філії \"" +
+                        user.getRegion() + "\" залишив відгук: \n\"" + text + '"';
+                TrelloService trelloService = new TrelloService();
+                trelloService.createCard(titleForTrello,textForTrello);
+            }
         }
 
         tx.commit();
