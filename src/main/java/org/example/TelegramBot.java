@@ -30,8 +30,6 @@ public class TelegramBot extends TelegramLongPollingBot {
     private String botToken;
     private String botUsername;
 
-    private final Map<Long, Integer> levels = new HashMap<>();
-
     private static final Map<String, String> positions = Map.ofEntries(
             Map.entry("mechanic", "Механік"),
             Map.entry("manager", "Менеджер"),
@@ -195,11 +193,36 @@ public class TelegramBot extends TelegramLongPollingBot {
     }
 
     public int getLevel(Long chatId){
-        return levels.getOrDefault(chatId, 0);
+        Session session = HibernateUtil.getSession();
+        Transaction tx = session.beginTransaction();
+        UserEntity user = session.createQuery("FROM UserEntity WHERE chatId = :chatId", UserEntity.class)
+                .setParameter("chatId", chatId)
+                .uniqueResult();
+        int level = user.getLevel();
+        tx.commit();
+        session.close();
+        return level;
     }
 
     public void setLevel(Long chatId, int level){
-        levels.put(chatId, level);
+        Session session = HibernateUtil.getSession();
+        Transaction tx = session.beginTransaction();
+
+        UserEntity user = session.createQuery("FROM UserEntity WHERE chatId = :chatId", UserEntity.class)
+                .setParameter("chatId", chatId)
+                .uniqueResult();
+        if (user == null) {
+            user = new UserEntity();
+            user.setChatId(chatId);
+            user.setLevel(level);
+            session.persist(user);
+        } else {
+            user.setLevel(level);
+            session.merge(user);
+        }
+
+        tx.commit();
+        session.close();
     }
 
     private void saveUserPosition(Long chatId, String key) {

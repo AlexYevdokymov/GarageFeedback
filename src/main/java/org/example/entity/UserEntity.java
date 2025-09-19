@@ -15,4 +15,5 @@ public class UserEntity {
 
     private String position;
     private String region;
+    private int level = 0;
 }
